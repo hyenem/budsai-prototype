@@ -205,26 +205,33 @@ els.sysSrc.addEventListener("change", () => {
   if (!mic.isRunning()) return;
   applySysSource();
 });
-function applySysSource() {
+async function applySysSource() {
   const src = els.sysSrc.value;
   if (src === "silence") {
     sys.stopSynthetic();
     try { els.sysEl.pause(); } catch {}
     els.sysEl.src = "";
     els.sysEl.style.display = "none";
+    appendFeed("sys", "선택 안 함 — 시스템 트랙 비어있음", "is-pipe");
     return;
   }
   if (src.startsWith("synthetic-")) {
     try { els.sysEl.pause(); } catch {}
     els.sysEl.src = "";
     els.sysEl.style.display = "none";
-    sys.startSynthetic(src);
+    try {
+      await sys.startSynthetic(src);
+      appendFeed("sys", `${src} 활성 · 시스템 트랙 채워지는 중 (음소거 ${sys.muted ? "ON — 마이크 보호" : "OFF — 스피커 출력 중"})`, "is-pipe");
+    } catch (e) {
+      fatal("sys", "시스템 사운드 시작 실패: " + e.message);
+    }
     return;
   }
   sys.stopSynthetic();
   els.sysEl.src = "./" + src;
   els.sysEl.style.display = "inline-block";
-  els.sysEl.play().catch(() => {});
+  try { await els.sysEl.play(); } catch {}
+  appendFeed("sys", `${src} 재생 시도`, "is-pipe");
 }
 
 // ===== Buttons =====

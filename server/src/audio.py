@@ -50,3 +50,30 @@ def track_to_wav(track: dict, fallback_rate: int = 16000) -> bytes | None:
     if not b64:
         return None
     return pcm16_to_wav(b64u_decode(b64), sample_rate=fallback_rate)
+
+
+def track_to_whisper_file(track: dict) -> tuple[str, bytes] | None:
+    """Decode a track to (filename, bytes) ready for Whisper upload.
+
+    - codec='pcm16'                → WAV-wrapped
+    - codec starts with 'audio/'   → raw bytes (webm/ogg/opus, etc.)
+    Returns None if no audio is present.
+    """
+    if not track:
+        return None
+    b64 = track.get("audio_b64") or ""
+    if not b64:
+        return None
+    codec = (track.get("codec") or "pcm16").lower()
+    raw = b64u_decode(b64)
+
+    if codec == "pcm16":
+        return ("track.wav", pcm16_to_wav(raw))
+
+    # Anything with a container mime — webm/opus, ogg/opus, mp4, etc.
+    if codec.startswith("audio/"):
+        ext = "webm" if "webm" in codec else ("ogg" if "ogg" in codec else "bin")
+        return (f"track.{ext}", raw)
+
+    # Unknown codec — best-effort: treat as raw bytes with .bin
+    return ("track.bin", raw)

@@ -26,7 +26,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from .audio import track_to_wav
+from .audio import track_to_wav, track_to_whisper_file
 from .config import get_settings
 from .storage import store
 
@@ -166,8 +166,14 @@ async def _run_real(session_id: str, body: dict[str, Any], settings) -> None:
 
 # ----- OpenAI calls -----
 
-async def _whisper(client: AsyncOpenAI, wav_bytes: bytes, name: str, model: str) -> str:
-    file_arg = (f"{name}.wav", wav_bytes, "audio/wav")
+async def _whisper(client: AsyncOpenAI, fname: str, audio_bytes: bytes, model: str) -> str:
+    # Whisper accepts wav / mp3 / mp4 / mpeg / mpga / m4a / wav / webm / ogg.
+    mime = "audio/wav" if fname.endswith(".wav") else (
+        "audio/webm" if fname.endswith(".webm") else (
+            "audio/ogg" if fname.endswith(".ogg") else "application/octet-stream"
+        )
+    )
+    file_arg = (fname, audio_bytes, mime)
     r = await client.audio.transcriptions.create(model=model, file=file_arg)
     return (r.text or "").strip()
 
@@ -179,13 +185,18 @@ async def _transcribe_tracks(
     question_t: dict[str, Any],
     model: str,
 ) -> dict[str, str]:
-    """Run Whisper on all three tracks in parallel, skipping empty ones."""
+    """Whisper on each non-empty track in parallel. Honors track.codec —
+    PCM gets WAV-wrapped, container formats (webm/opus) go straight to API."""
     async def one(track: dict[str, Any], name: str) -> str:
-        wav = track_to_wav(track)
-        if not wav or len(wav) < 1000:
+        pair = track_to_whisper_file(track)
+        if not pair or len(pair[1]) < 800:
             return ""
+        fname, audio_bytes = pair
+        # Stamp track name into the filename so server logs are readable.
+        stem, _, ext = fname.rpartition(".")
+        named = f"{name}.{ext}" if ext else f"{name}.bin"
         try:
-            return await _whisper(client, wav, name, model)
+            return await _whisper(client, named, audio_bytes, model)
         except Exception as exc:
             logger.warning("whisper(%s) failed: %s", name, exc)
             return ""

@@ -40,14 +40,23 @@ export class SystemAudio {
   }
 
   /** Switch to synthetic mode. Stops any element playback. */
-  startSynthetic(kind = "synthetic-melody") {
+  async startSynthetic(kind = "synthetic-melody") {
     this.mode = kind;
     if (this.audioEl) {
       try { this.audioEl.pause(); } catch {}
       this.audioEl.src = "";
     }
     if (this.synthNodes) this._stopSynth();
+    await this._ensureCtxAsync();
     this._ensureSyntheticGraph(kind);
+  }
+
+  /** Force the AudioContext into the "running" state. */
+  async _ensureCtxAsync() {
+    this._ensureCtx();
+    if (this.ctx && this.ctx.state === "suspended") {
+      try { await this.ctx.resume(); } catch {}
+    }
   }
 
   /** Stop any current synthesizer and revert to silent element mode. */
@@ -121,10 +130,10 @@ export class SystemAudio {
       for (const l of this.sampleListeners) l(i16);
     };
     // ScriptProcessor's output must reach destination for the callback to
-    // run — give it a silent path via a zero-gain node so muting doesn't
-    // kill sample capture.
+    // run — give it a near-zero-gain path so muting doesn't kill capture.
+    // (Some browsers stop processing if gain is *exactly* 0.)
     const silent = this.ctx.createGain();
-    silent.gain.value = 0;
+    silent.gain.value = 0.00001;
     this.processor.connect(silent);
     silent.connect(this.ctx.destination);
 
