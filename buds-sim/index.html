@@ -33,6 +33,35 @@
       </div>
 
       <div class="card">
+        <div class="card-title">조작</div>
+        <div class="controls">
+          <button class="btn btn-start" id="btn-mic">
+            ▶ 시뮬레이션 시작
+            <span style="display:block; font-size:11px; font-weight:500; opacity:0.85; margin-top:2px;">
+              마이크 권한 + 시스템 재생을 함께 시작합니다
+            </span>
+          </button>
+          <button class="btn btn-primary" id="btn-trigger" disabled>
+            🔘 롱프레스 트리거 — 질문 시작
+          </button>
+          <button class="btn" id="btn-clear">🧹 응답 지우기</button>
+        </div>
+      </div>
+
+      <div class="card card-feed">
+        <div class="card-title">📡 서버 응답 (SSE 스트림) — 트리거 후 여기에 단계별 결과가 표시됩니다</div>
+        <div class="feed" id="feed">
+          <div class="empty">아직 응답 없음. 위의 "🔘 롱프레스 트리거" 버튼을 눌러 시작하세요.</div>
+        </div>
+        <div class="answer-box" id="answer">
+          <div id="answer-text"></div>
+          <div class="song" id="answer-song"></div>
+          <audio id="answer-audio" controls style="margin-top:10px; width:100%; display:none;"></audio>
+          <div class="followups" id="answer-followups"></div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">🎵 시스템 재생 (버즈가 재생 중인 소리)</div>
         <div class="sys-controls">
           <select id="sys-source" class="sys-select">
@@ -91,34 +120,6 @@
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">조작</div>
-        <div class="controls">
-          <button class="btn btn-start" id="btn-mic">
-            ▶ 시뮬레이션 시작
-            <span style="display:block; font-size:11px; font-weight:500; opacity:0.85; margin-top:2px;">
-              마이크 권한 + 시스템 재생을 함께 시작합니다
-            </span>
-          </button>
-          <button class="btn btn-primary" id="btn-trigger" disabled>
-            🔘 롱프레스 트리거 — 질문 시작
-          </button>
-          <button class="btn" id="btn-clear">🧹 응답 지우기</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">서버 응답 (SSE 스트림)</div>
-        <div class="feed" id="feed">
-          <div class="empty">트리거를 눌러 첫 세션을 시작하세요.</div>
-        </div>
-        <div class="answer-box" id="answer">
-          <div id="answer-text"></div>
-          <div class="song" id="answer-song"></div>
-          <audio id="answer-audio" controls style="margin-top:10px; width:100%; display:none;"></audio>
-          <div class="followups" id="answer-followups"></div>
-        </div>
-      </div>
     </section>
 
     <!-- ============= RIGHT: code viewer ============= -->

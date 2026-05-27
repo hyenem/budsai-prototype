@@ -270,6 +270,18 @@ header.app-head {
 .dev-id .ok { color: var(--green); }
 .dev-id .pending { color: var(--amber); }
 
+/* Server response card — emphasized */
+.card-feed {
+  border: 1px solid var(--accent-dim);
+  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(94, 234, 212, 0.04) 100%);
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.15), 0 4px 16px rgba(94, 234, 212, 0.08);
+}
+.card-feed .card-title {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 /* SSE feed */
 .feed {
   background: var(--code-bg);
