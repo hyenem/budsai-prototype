@@ -213,10 +213,12 @@ els.btnMic.addEventListener("click", async () => {
   try {
     viewer.fire("mic", "getusermedia");
     await mic.start();
-    els.btnMic.textContent = "🎤 마이크 ON";
+    els.btnMic.innerHTML = "✓ 시뮬레이션 실행 중";
+    els.btnMic.classList.remove("btn-start");
+    els.btnMic.classList.add("is-running");
     els.btnMic.disabled = true;
     els.btnTrig.disabled = false;
-    appendFeed("mic-on", "외부 마이크 활성 · Ring E 채워지는 중", "is-pipe");
+    appendFeed("started", "외부 마이크 + 시스템 재생 활성화 — 트리거 버튼을 눌러 질문하세요", "is-pipe");
     // Now that we have a user gesture, start the chosen system source too.
     applySysSource();
   } catch (e) {

@@ -205,6 +205,43 @@ header.app-head {
   padding: 14px;
 }
 .btn-primary:hover { background: var(--accent-dim); }
+
+.btn-start {
+  background: linear-gradient(135deg, #5eead4 0%, #2dd4bf 100%);
+  color: #0b0d12;
+  border: none;
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 16px; font-weight: 800;
+  padding: 18px 14px;
+  box-shadow: 0 4px 14px rgba(94, 234, 212, 0.35);
+  animation: glow 2s ease-in-out infinite;
+}
+.btn-start:hover {
+  background: linear-gradient(135deg, #2dd4bf 0%, #14b8a6 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(94, 234, 212, 0.45);
+}
+.btn-start:disabled {
+  animation: none;
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  box-shadow: none;
+}
+.btn.is-running {
+  background: var(--bg-elev);
+  color: var(--green);
+  border: 1px solid var(--green);
+  font-weight: 700;
+  cursor: default;
+  animation: none;
+  box-shadow: none;
+  grid-column: 1 / -1;
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 4px 14px rgba(94, 234, 212, 0.35); }
+  50%      { box-shadow: 0 4px 22px rgba(94, 234, 212, 0.6); }
+}
 .btn-primary.is-recording {
   background: var(--magenta);
   color: white;
