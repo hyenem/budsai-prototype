@@ -44,7 +44,10 @@ export const SNIPPETS = {
   ringbuffer: {
     title: "3 · ring-buffer.js",
     lines: [
-      "// Dual ring buffer · A=환경음 30s 룩백 · B=사용자 질문 5s.",
+      "// THREE ring buffers fan out from the audio sources:",
+      "//   S = system playback (what the buds are RENDERING)",
+      "//   E = external mic    (what the OUTSIDE world sounds like)",
+      "//   Q = question        (what the USER says, VAD-bounded)",
       "// Write hot-path: O(1) modulo arithmetic, no allocations.",
       "",
       "write(int16) {",
@@ -67,7 +70,7 @@ export const SNIPPETS = {
       "  return out;",
       "}",
     ],
-    anchors: { writeA: 3, snapshot: 14 },
+    anchors: { writeS: 5, writeE: 5, snapshot: 17 },
   },
 
   trigger: {

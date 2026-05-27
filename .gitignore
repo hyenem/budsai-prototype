@@ -56,6 +56,12 @@ audio-samples/*.wav
 audio-samples/*.opus
 audio-samples/*.mp3
 !audio-samples/.gitkeep
+
+# User-provided mp3 demo clips for buds-sim (kept out of the public repo)
+buds-sim/audio/*.mp3
+buds-sim/audio/*.wav
+buds-sim/audio/*.ogg
+!buds-sim/audio/README.md
 logs/
 tmp/
 

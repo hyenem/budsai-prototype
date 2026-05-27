@@ -19,9 +19,22 @@ class Settings(BaseSettings):
         "https://hyenem.github.io"
     )
 
+    # ---- OpenAI ----
+    # When OPENAI_API_KEY is missing/empty the server runs the deterministic
+    # mock pipeline from Sprint 1 — that's what keeps pytest passing in CI.
+    openai_api_key: str = ""
+    openai_stt_model: str = "whisper-1"
+    openai_llm_model: str = "gpt-4o-mini"
+    openai_tts_model: str = "tts-1"
+    openai_tts_voice: str = "alloy"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def has_openai(self) -> bool:
+        return bool(self.openai_api_key and self.openai_api_key.startswith("sk-"))
 
 
 @lru_cache

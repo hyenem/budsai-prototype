@@ -12,6 +12,9 @@ cryptography==44.0.0
 sse-starlette==2.2.1
 python-ulid==3.0.0
 
+# Sprint 2: real LLM pipeline (Whisper + GPT-4o + TTS)
+openai==1.58.1
+
 # Test deps (used by `pytest`, not by the running server)
 pytest==8.3.4
 pytest-asyncio==0.25.0

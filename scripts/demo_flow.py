@@ -90,8 +90,8 @@ def main() -> int:
             return fail(f"register returned {r.status_code}: {r.text}")
         ok(f"registered_at = {r.json()['registered_at']}")
 
-        # 4. Build envelope
-        step(4, "Build & sign envelope (placeholder PCM bytes)")
+        # 4. Build envelope (3 tracks)
+        step(4, "Build & sign envelope (placeholder PCM bytes, 3 tracks)")
         fake_pcm = base64.urlsafe_b64encode(b"\x00\x01" * 16).rstrip(b"=").decode()
         envelope = {
             "v": 1,
@@ -100,7 +100,9 @@ def main() -> int:
             "ts": int(time.time() * 1000),
             "trigger": "long_press",
             "tracks": {
-                "lookback": {"codec": "pcm16", "duration_ms": 30000,
+                "system":   {"codec": "pcm16", "duration_ms": 30000,
+                             "audio_b64": fake_pcm, "sha256": "deadbeef"},
+                "external": {"codec": "pcm16", "duration_ms": 30000,
                              "audio_b64": fake_pcm, "sha256": "deadbeef"},
                 "question": {"codec": "pcm16", "duration_ms": 1500,
                              "audio_b64": fake_pcm, "sha256": "cafef00d"},

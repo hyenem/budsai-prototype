@@ -5,7 +5,7 @@ full TLV from packet.html). This keeps debugging trivial while we wire
 up the auth + transport path. We'll switch the body to TLV+Opus in
 Sprint 2 without changing the signature scheme.
 
-Wire format:
+Wire format — three independent audio tracks:
 
     {
       "v":        1,
@@ -14,13 +14,23 @@ Wire format:
       "ts":       1716123456789,
       "trigger":  "long_press",
       "tracks": {
-        "lookback":  { "codec": "pcm16", "duration_ms": 30000,
-                       "audio_b64": "...", "sha256": "..." },
-        "question":  { "codec": "pcm16", "duration_ms":  2300,
-                       "audio_b64": "...", "sha256": "..." }
+        # what the buds were PLAYING into the user's ear
+        "system":   { "codec": "pcm16", "duration_ms": 30000, "audio_b64": "...", "sha256": "..." },
+
+        # what the OUTSIDE world sounded like (ANC mic on real buds,
+        # system mic in the simulator)
+        "external": { "codec": "pcm16", "duration_ms": 30000, "audio_b64": "...", "sha256": "..." },
+
+        # what the USER said after the trigger fired (VAD-bounded)
+        "question": { "codec": "pcm16", "duration_ms":  2300, "audio_b64": "...", "sha256": "..." }
       },
       "sig":      "<base64url(ed25519(canonical_bytes(body_without_sig)))>"
     }
+
+The three tracks are independent so the server can choose which to
+transcribe / fingerprint / ignore per intent. "방금 그 노래 뭐였어?"
+analyzes the system track; "옆에서 누가 뭐라 했지?" analyzes the
+external track; both also consider the question track for context.
 
 `canonical_bytes()` produces a deterministic byte string the same way
 on Python and TypeScript: JSON with sorted keys, no spaces, UTF-8.

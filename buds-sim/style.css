@@ -155,6 +155,25 @@ header.app-head {
 
 .ring.is-A .ring-name { color: var(--accent); }
 .ring.is-B .ring-name { color: var(--magenta); }
+.ring.is-S .ring-name { color: var(--violet); }
+
+/* System audio controls */
+.sys-controls {
+  display: flex; gap: 8px; align-items: center;
+  flex-wrap: wrap;
+}
+.sys-select {
+  flex: 1; min-width: 220px;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px;
+  font-family: var(--sans); font-size: 13px;
+}
+#sys-audio {
+  height: 32px;
+  flex: 1; min-width: 200px;
+  filter: hue-rotate(220deg);
+}
 
 /* Controls */
 .controls {

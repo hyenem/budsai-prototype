@@ -35,16 +35,27 @@ export function signEnvelope(envelope, keypair) {
 }
 
 // Helper for buds-sim — produces an envelope from raw track data
-// without yet doing Opus encoding (Sprint 2 swaps in real codec).
+// without yet doing Opus encoding (real codec lands later).
+//
+// THREE independent tracks, all Int16 mono 16 kHz:
+//   system   — what the buds were PLAYING (music/podcast/call)
+//   external — what the ANC mic was hearing OUTSIDE the user
+//   question — what the user SAID after long-press
 export function buildEnvelope({
   deviceId,
   sessionId,
   trigger = "long_press",
-  lookbackBytes,    // Uint8Array — raw PCM placeholder
-  questionBytes,    // Uint8Array
-  lookbackMs,
-  questionMs,
+  systemBytes,    systemMs,
+  externalBytes,  externalMs,
+  questionBytes,  questionMs,
 }) {
+  const track = (bytes, ms) => ({
+    codec: "pcm16",
+    duration_ms: ms | 0,
+    audio_b64: bytesToB64u(bytes),
+    sha256: "placeholder",
+  });
+
   return {
     v: 1,
     device: deviceId,
@@ -52,18 +63,9 @@ export function buildEnvelope({
     ts: Date.now(),
     trigger,
     tracks: {
-      lookback: {
-        codec: "pcm16",
-        duration_ms: lookbackMs,
-        audio_b64: bytesToB64u(lookbackBytes),
-        sha256: "placeholder",
-      },
-      question: {
-        codec: "pcm16",
-        duration_ms: questionMs,
-        audio_b64: bytesToB64u(questionBytes),
-        sha256: "placeholder",
-      },
+      system:   track(systemBytes,   systemMs),
+      external: track(externalBytes, externalMs),
+      question: track(questionBytes, questionMs),
     },
   };
 }

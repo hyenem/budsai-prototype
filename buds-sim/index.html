@@ -33,23 +33,50 @@
       </div>
 
       <div class="card">
-        <div class="card-title">마이크 입력 (외부 환경음, 16 kHz mono)</div>
+        <div class="card-title">🎵 시스템 재생 (버즈가 재생 중인 소리)</div>
+        <div class="sys-controls">
+          <select id="sys-source" class="sys-select">
+            <option value="synthetic-melody" selected>🎼 합성 멜로디 (mp3 불필요)</option>
+            <option value="synthetic-podcast">🗣️ 합성 음성 (TTS-like)</option>
+            <option value="audio/bts-dynamite-30s.mp3">🎵 ./audio/bts-dynamite-30s.mp3 (사용자 추가)</option>
+            <option value="audio/podcast-30s.mp3">🎵 ./audio/podcast-30s.mp3 (사용자 추가)</option>
+            <option value="silence">선택 안 함</option>
+          </select>
+          <audio id="sys-audio" preload="auto" controls loop></audio>
+        </div>
+        <div class="meter" style="margin-top:8px;">
+          <span class="label">system playback level</span>
+          <span class="level-num" id="sys-num">0.00</span>
+          <div class="bar" id="sys-bar" style="background:linear-gradient(180deg,#c084fc,#7c3aed);"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🎤 외부 마이크 (ANC mic 시뮬)</div>
         <div class="mic-row">
           <div class="meter">
-            <span class="label">mic level</span>
+            <span class="label">external mic</span>
             <span class="level-num" id="mic-num">0.00</span>
             <div class="bar" id="mic-bar"></div>
           </div>
           <div class="meter">
-            <span class="label">B (질문) level</span>
+            <span class="label">question (B) level</span>
             <span class="level-num" id="q-num">—</span>
             <div class="bar" id="q-bar" style="background:linear-gradient(180deg,#f472b6,#be185d);"></div>
           </div>
         </div>
 
+        <div class="ring is-S">
+          <div class="ring-head">
+            <span class="ring-name" style="color:#c084fc;">Buffer S · system playback <span class="duration">30s rolling</span></span>
+            <span class="ring-meta" id="ringS-meta">0 / 1500 slots</span>
+          </div>
+          <canvas class="ring-canvas" id="ringS"></canvas>
+        </div>
+
         <div class="ring is-A">
           <div class="ring-head">
-            <span class="ring-name">Buffer A · lookback <span class="duration">30s rolling</span></span>
+            <span class="ring-name">Buffer E · external lookback <span class="duration">30s rolling</span></span>
             <span class="ring-meta" id="ringA-meta">0 / 1500 slots</span>
           </div>
           <canvas class="ring-canvas" id="ringA"></canvas>
@@ -57,7 +84,7 @@
 
         <div class="ring is-B">
           <div class="ring-head">
-            <span class="ring-name">Buffer B · 사용자 질문 <span class="duration">5s cap · VAD-bounded</span></span>
+            <span class="ring-name">Buffer Q · question <span class="duration">5s cap · VAD-bounded</span></span>
             <span class="ring-meta" id="ringB-meta">idle</span>
           </div>
           <canvas class="ring-canvas" id="ringB"></canvas>
@@ -83,6 +110,7 @@
         <div class="answer-box" id="answer">
           <div id="answer-text"></div>
           <div class="song" id="answer-song"></div>
+          <audio id="answer-audio" controls style="margin-top:10px; width:100%; display:none;"></audio>
           <div class="followups" id="answer-followups"></div>
         </div>
       </div>
