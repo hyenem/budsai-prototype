@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>buds-sim · BudsAI prototype</title>
+  <meta name="description" content="Galaxy Buds firmware simulator running in the browser." />
+  <meta name="api-base" content="https://budsai.up.railway.app" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="layout">
+    <header class="app-head">
+      <h1>🎧 buds-sim</h1>
+      <span class="role">버즈 펌웨어 시뮬레이터</span>
+      <span class="doc-link">
+        <a href="../">← prototype index</a>
+        ·
+        <a href="https://github.com/hyenem/budsai-prototype" target="_blank" rel="noopener">source ↗</a>
+      </span>
+    </header>
+
+    <!-- ============= LEFT: controls + visual ============= -->
+    <section class="left-col">
+      <div class="card">
+        <div class="card-title">디바이스 신원 (Ed25519)</div>
+        <dl class="dev-id">
+          <dt>device_id</dt>      <dd id="dev-id">—</dd>
+          <dt>public_key</dt>     <dd id="dev-pub">—</dd>
+          <dt>server</dt>         <dd id="dev-server" class="pending">probing…</dd>
+          <dt>registered</dt>     <dd id="dev-reg" class="pending">pending</dd>
+        </dl>
+      </div>
+
+      <div class="card">
+        <div class="card-title">마이크 입력 (외부 환경음, 16 kHz mono)</div>
+        <div class="mic-row">
+          <div class="meter">
+            <span class="label">mic level</span>
+            <span class="level-num" id="mic-num">0.00</span>
+            <div class="bar" id="mic-bar"></div>
+          </div>
+          <div class="meter">
+            <span class="label">B (질문) level</span>
+            <span class="level-num" id="q-num">—</span>
+            <div class="bar" id="q-bar" style="background:linear-gradient(180deg,#f472b6,#be185d);"></div>
+          </div>
+        </div>
+
+        <div class="ring is-A">
+          <div class="ring-head">
+            <span class="ring-name">Buffer A · lookback <span class="duration">30s rolling</span></span>
+            <span class="ring-meta" id="ringA-meta">0 / 1500 slots</span>
+          </div>
+          <canvas class="ring-canvas" id="ringA"></canvas>
+        </div>
+
+        <div class="ring is-B">
+          <div class="ring-head">
+            <span class="ring-name">Buffer B · 사용자 질문 <span class="duration">5s cap · VAD-bounded</span></span>
+            <span class="ring-meta" id="ringB-meta">idle</span>
+          </div>
+          <canvas class="ring-canvas" id="ringB"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">조작</div>
+        <div class="controls">
+          <button class="btn" id="btn-mic">🎤 마이크 시작</button>
+          <button class="btn" id="btn-clear">🧹 응답 지우기</button>
+          <button class="btn btn-primary" id="btn-trigger" disabled>
+            🔘 롱프레스 트리거 — 질문 시작
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">서버 응답 (SSE 스트림)</div>
+        <div class="feed" id="feed">
+          <div class="empty">트리거를 눌러 첫 세션을 시작하세요.</div>
+        </div>
+        <div class="answer-box" id="answer">
+          <div id="answer-text"></div>
+          <div class="song" id="answer-song"></div>
+          <div class="followups" id="answer-followups"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============= RIGHT: code viewer ============= -->
+    <section class="right-col">
+      <div class="card-title" style="padding-left:4px;">실행 중인 원본 코드 — 패킷이 흐르는 순간 해당 줄이 깜빡입니다.</div>
+      <div class="code-viewer" id="code-viewer"></div>
+    </section>
+
+    <footer class="app-foot">
+      <span>buds-sim · build-free ES modules · @noble/ed25519 from esm.sh</span>
+      <span id="api-status">API: probing…</span>
+    </footer>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -230,16 +230,16 @@
 
     <h2>4 modules + 1 cockpit</h2>
     <div class="modules">
-      <a class="mod disabled" href="#">
+      <a class="mod" href="./buds-sim/">
         <div class="mod-head">
           <span class="mod-icon">🎧</span>
           <span class="mod-title">buds-sim</span>
-          <span class="mod-badge todo">Sprint 1</span>
+          <span class="mod-badge">live</span>
         </div>
         <div class="mod-desc">
-          버즈 펌웨어 시뮬레이터. 마이크 = 외부음, 시스템 출력 = 내부 소리, 이중 링버퍼·Opus·VAD·패킷 서명까지.
+          버즈 펌웨어 시뮬레이터. 마이크 = 외부음, 이중 링버퍼·VAD·패킷 서명 → 서버로 전송, SSE로 단계별 응답 수신.
         </div>
-        <div class="mod-tech">Web Audio · opus-recorder · Ed25519</div>
+        <div class="mod-tech">Web Audio · @noble/ed25519 · build-free ESM</div>
       </a>
 
       <a class="mod disabled" href="#">
