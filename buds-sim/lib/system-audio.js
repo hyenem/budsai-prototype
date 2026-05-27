@@ -119,33 +119,41 @@ export class SystemAudio {
     this.master.gain.value = this.muted ? 0 : 0.6;
     this.master.connect(this.ctx.destination);
 
-    // Tap nodes are built once and reused across source switches.
+    // Tap nodes — analyser for live level, processor for raw samples.
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 512;
     this.analyser.smoothingTimeConstant = 0.6;
+
     this.processor = this.ctx.createScriptProcessor(2048, 1, 1);
+    this.sampleCount = 0;
     this.processor.onaudioprocess = (e) => {
       const input = e.inputBuffer.getChannelData(0);
+      // Silence the output so the processor's tap doesn't become audible.
+      const out = e.outputBuffer.getChannelData(0);
+      out.fill(0);
       const i16 = downsampleAndQuantize(input, this.ctx.sampleRate, TARGET_SAMPLE_RATE);
+      this.sampleCount += i16.length;
       for (const l of this.sampleListeners) l(i16);
     };
-    // ScriptProcessor's output must reach destination for the callback to
-    // run — give it a near-zero-gain path so muting doesn't kill capture.
-    // (Some browsers stop processing if gain is *exactly* 0.)
-    const silent = this.ctx.createGain();
-    silent.gain.value = 0.00001;
-    this.processor.connect(silent);
-    silent.connect(this.ctx.destination);
+
+    // Put the processor (and through it, the analyser) on the destination
+    // path. Chrome only services nodes that ultimately reach destination.
+    this.analyser.connect(this.processor);
+    this.processor.connect(this.ctx.destination);
 
     this._pumpLevel();
   }
 
-  /** Connect any source node into the analyser tap AND the master output. */
+  /** Cumulative samples passed through the processor — useful for debug UI. */
+  getSampleCount() { return this.sampleCount || 0; }
+
+  /** Connect any source into both the tap path AND the speaker (master). */
   _wireTap(source) {
     try { source.disconnect(); } catch {}
+    // Tap path: source → analyser → processor → destination (always-on)
     source.connect(this.analyser);
-    source.connect(this.processor);
-    source.connect(this.master);   // master.gain controls audibility
+    // Speaker path: source → master → destination (master.gain mute-able)
+    source.connect(this.master);
   }
 
   setMuted(muted) {

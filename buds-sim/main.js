@@ -59,6 +59,7 @@ const els = {
   sysSrc:   $("sys-source"),
   sysEl:    $("sys-audio"),
   sysMute:  $("sys-mute"),
+  sysDebug: $("sys-debug"),
 };
 
 // ----- top-level error catch so failures land in the UI, not just console -----
@@ -194,6 +195,16 @@ sys.onLevel((rms) => {
   els.sysNum.textContent = rms.toFixed(3);
 });
 sys.onSamples((int16) => { ringS.write(int16); });
+
+// Debug heartbeat for the system track — surfaces "is sample data
+// actually arriving?" without needing DevTools.
+setInterval(() => {
+  if (!els.sysDebug) return;
+  const n = sys.getSampleCount ? sys.getSampleCount() : 0;
+  const state = sys.ctx ? sys.ctx.state : "idle";
+  els.sysDebug.textContent =
+    `samples captured: ${n.toLocaleString()} · ctx: ${state} · mode: ${sys.mode}`;
+}, 500);
 
 // ===== System audio: source picker. ALL action deferred to first user click. =====
 sys.attach(els.sysEl);
