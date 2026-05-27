@@ -1,0 +1,63 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.env.local
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# ===== Node =====
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== Vite / Frontend build =====
+buds-sim/dist/
+galaxy-host/dist/
+others-host/dist/
+demo-shell/dist/
+*.local
+
+# ===== Editors =====
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ===== Secrets =====
+*.pem
+*.key
+secrets/
+keys/
+!keys/.gitkeep
+
+# ===== Runtime / generated =====
+*.sqlite
+*.sqlite3
+*.db
+audio-samples/*.wav
+audio-samples/*.opus
+audio-samples/*.mp3
+!audio-samples/.gitkeep
+logs/
+tmp/
+
+# ===== Railway / deploy =====
+.railway/
