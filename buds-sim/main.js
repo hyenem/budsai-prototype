@@ -20,9 +20,10 @@ import { SNIPPETS } from "./snippets.js";
 // ----- constants -----
 const SR = 16000;
 const LOOKBACK_MS = 30_000;
-const QUESTION_MAX_MS = 5_000;
-const VAD_HANGOVER_MS = 500;
-const VAD_RMS_THRESHOLD = 0.012;
+const QUESTION_MAX_MS = 8_000;        // hard cap (was 5; user complained recording cut off)
+const VAD_HANGOVER_MS = 900;          // silence to consider speech ended
+const VAD_RMS_THRESHOLD = 0.008;      // more sensitive (was 0.012)
+const VAD_MIN_SPEECH_MS = 300;        // need at least this much speech before allowing endpoint
 
 // ----- DOM -----
 const $ = (id) => document.getElementById(id);
@@ -81,8 +82,9 @@ const sys = new SystemAudio();
 let kp = null;             // Ed25519 keypair (set during boot)
 let DEVICE_ID = "—";
 let recording = false;
-let lastVoiceTs = 0;
 let questionStartTs = 0;
+let firstVoiceTs = 0;     // when speech was first detected this take (0 = never yet)
+let lastVoiceTs = 0;      // when speech was last detected (only meaningful after first)
 let bootOk = false;
 
 // ===== ring viz attached immediately (no audio yet, just empty bars) =====
@@ -154,13 +156,25 @@ mic.onLevel((rms) => {
   if (recording) {
     els.qBar.style.height = pct + "%";
     els.qNum.textContent = rms.toFixed(3);
+    const now = performance.now();
+
     if (rms > VAD_RMS_THRESHOLD) {
-      lastVoiceTs = performance.now();
+      if (!firstVoiceTs) firstVoiceTs = now;
+      lastVoiceTs = now;
       viewer.fire("vad", "speech");
-    } else if (lastVoiceTs && performance.now() - lastVoiceTs > VAD_HANGOVER_MS) {
+    }
+
+    // Only consider closing on silence AFTER:
+    //   (a) we've heard speech at least once (firstVoiceTs > 0)
+    //   (b) we've heard ≥ VAD_MIN_SPEECH_MS of voiced frames cumulatively
+    //   (c) the trailing silence has lasted ≥ VAD_HANGOVER_MS
+    const heardEnough = firstVoiceTs && (lastVoiceTs - firstVoiceTs) >= VAD_MIN_SPEECH_MS;
+    const tailedOut = lastVoiceTs && now - lastVoiceTs > VAD_HANGOVER_MS;
+
+    if (heardEnough && tailedOut) {
       viewer.fire("vad", "endpoint");
       finishQuestion("vad");
-    } else if (performance.now() - questionStartTs > QUESTION_MAX_MS) {
+    } else if (now - questionStartTs > QUESTION_MAX_MS) {
       finishQuestion("max");
     }
   }
@@ -238,16 +252,17 @@ els.btnTrig.addEventListener("click", () => startQuestion());
 // ===== Trigger =====
 function startQuestion() {
   if (recording) return;
-  if (!mic.isRunning()) { alert("먼저 🎤 마이크 시작 버튼을 눌러주세요."); return; }
+  if (!mic.isRunning()) { alert("먼저 ▶ 시뮬레이션 시작 버튼을 눌러주세요."); return; }
   ringQ.reset();
   recording = true;
   questionStartTs = performance.now();
-  lastVoiceTs = performance.now();
-  els.btnTrig.textContent = "🔴 녹음 중 · 말이 끝나면 자동 종료";
+  firstVoiceTs = 0;       // NO endpoint check until we've actually heard speech
+  lastVoiceTs = 0;
+  els.btnTrig.textContent = "🔴 녹음 중 · 말씀하세요…";
   els.btnTrig.classList.add("is-recording");
   viewer.fire("trigger", "longpress");
   appendFeed("triggered",
-    "롱프레스 감지 · S/E 스냅샷 잠금 + Q 캡처 시작", "is-pipe");
+    "녹음 시작 — 말씀 후 약 0.9s 침묵 또는 최대 8s에서 자동 전송", "is-pipe");
 }
 
 async function finishQuestion(reason) {
