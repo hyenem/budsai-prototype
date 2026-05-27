@@ -1,5 +1,9 @@
 # BudsAI — Prototype
 
+> 🟢 **Live**:
+> · API → <https://budsai.up.railway.app/healthz>
+> · Static (placeholder, populated through Sprint 1+) → <https://hyenem.github.io/budsai-prototype/>
+
 A live, in-browser walkthrough of the [BudsAI design](https://hyenem.github.io)
 running entirely on a laptop. No earbud hardware required:
 
@@ -54,7 +58,7 @@ curl http://localhost:8000/healthz
 
 ## Sprint plan
 
-- **Sprint 0** — repo + FastAPI hello world + Railway deploy ✅ in progress
+- **Sprint 0** — repo + FastAPI hello world + Railway deploy ✅ **done** (2026-05-27)
 - **Sprint 1** — packet format, device auth, buds-sim → server full round-trip (mocked LLM)
 - **Sprint 2** — real OpenAI integration (Whisper + GPT-4o + TTS)
 - **Sprint 3** — galaxy-host with action cards

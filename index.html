@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BudsAI — Prototype</title>
+  <meta name="description" content="Live in-browser walkthrough of the BudsAI design — no earbud hardware needed." />
+  <link rel="preconnect" href="https://budsai.up.railway.app" />
+  <style>
+    :root {
+      --bg: #0f1115;
+      --bg-elev: #161922;
+      --bg-card: #1a1e29;
+      --border: #262b38;
+      --text: #e4e7ed;
+      --text-dim: #9aa3b2;
+      --text-muted: #6b7280;
+      --accent: #5eead4;
+      --accent-dim: #2dd4bf;
+      --accent-soft: rgba(94, 234, 212, 0.1);
+      --green: #34d399;
+      --red: #f87171;
+      --amber: #fbbf24;
+      --mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+      --sans: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 15px;
+      min-height: 100vh;
+      padding: 48px 24px 96px;
+    }
+    .container { max-width: 920px; margin: 0 auto; }
+
+    .eyebrow {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 4px 10px; border-radius: 4px;
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-size: 38px; font-weight: 800;
+      letter-spacing: -0.025em; line-height: 1.15;
+      margin-bottom: 12px;
+    }
+    h1 em { font-style: normal; color: var(--accent); }
+    .subtitle {
+      color: var(--text-dim); font-size: 17px;
+      margin-bottom: 32px; max-width: 680px;
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 40px;
+    }
+    @media (max-width: 600px) { .status-row { grid-template-columns: 1fr; } }
+    .status {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--text-muted); flex-shrink: 0;
+      box-shadow: 0 0 0 0 currentColor;
+      animation: pulse 1.4s ease-out infinite;
+    }
+    .dot.ok { background: var(--green); color: var(--green); }
+    .dot.err { background: var(--red); color: var(--red); animation: none; }
+    .dot.wait { background: var(--amber); color: var(--amber); }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 currentColor; }
+      70%  { box-shadow: 0 0 0 8px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+    .status-body { flex: 1; }
+    .status-label {
+      font-family: var(--mono); font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .status-value {
+      font-weight: 700; font-size: 14px; margin-top: 2px;
+      word-break: break-all;
+    }
+    .status-value a { color: var(--accent); text-decoration: none; }
+    .status-value a:hover { text-decoration: underline; }
+    .status-detail {
+      font-family: var(--mono); font-size: 12px;
+      color: var(--text-dim); margin-top: 4px;
+    }
+
+    h2 {
+      font-size: 18px; font-weight: 700;
+      margin: 32px 0 16px;
+      color: var(--text);
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modules {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-top: 16px;
+    }
+    @media (max-width: 720px) { .modules { grid-template-columns: 1fr; } }
+    .mod {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      text-decoration: none;
+      color: var(--text);
+      transition: all 0.15s;
+      display: flex; flex-direction: column;
+      min-height: 140px;
+    }
+    .mod:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .mod.disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+    .mod-head {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 8px;
+    }
+    .mod-icon { font-size: 20px; }
+    .mod-title {
+      font-weight: 700; font-size: 15px;
+      letter-spacing: -0.005em;
+    }
+    .mod-badge {
+      margin-left: auto;
+      font-family: var(--mono); font-size: 10px;
+      padding: 2px 7px; border-radius: 3px;
+      background: var(--accent-soft); color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+    .mod-badge.todo { background: rgba(251,191,36,0.12); color: var(--amber); }
+    .mod-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+      flex: 1;
+    }
+    .mod-tech {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--text-muted); margin-top: 10px;
+    }
+
+    .links {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      margin-top: 16px;
+      padding: 14px 16px;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 13px;
+    }
+    .links a {
+      color: var(--accent); text-decoration: none;
+      font-family: var(--mono);
+    }
+    .links a:hover { text-decoration: underline; }
+    .links span { color: var(--text-muted); }
+
+    footer {
+      margin-top: 56px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 12px; color: var(--text-muted);
+      font-family: var(--mono);
+    }
+    code {
+      background: rgba(94,234,212,0.08);
+      color: var(--accent);
+      font-family: var(--mono);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <span class="eyebrow">Prototype · Sprint 0 / 5</span>
+    <h1>BudsAI — <em>live in-browser walkthrough</em></h1>
+    <p class="subtitle">
+      이 페이지는 갤럭시 버즈 AI 기능의 end-to-end 흐름을 실제 코드로 시뮬레이션합니다.
+      하드웨어 없이, 마이크와 스피커만 있는 노트북에서 모듈 4개가 동시에 돕니다.
+      디자인 문서는 <a href="https://hyenem.github.io" style="color:var(--accent);">hyenem.github.io</a>.
+    </p>
+
+    <div class="status-row">
+      <div class="status">
+        <span class="dot wait" id="api-dot"></span>
+        <div class="status-body">
+          <div class="status-label">API · Railway</div>
+          <div class="status-value">
+            <a href="https://budsai.up.railway.app/healthz" target="_blank" rel="noopener">budsai.up.railway.app</a>
+          </div>
+          <div class="status-detail" id="api-detail">probing…</div>
+        </div>
+      </div>
+      <div class="status">
+        <span class="dot ok"></span>
+        <div class="status-body">
+          <div class="status-label">Static · GitHub Pages</div>
+          <div class="status-value">
+            <a href="https://github.com/hyenem/budsai-prototype" target="_blank" rel="noopener">hyenem/budsai-prototype</a>
+          </div>
+          <div class="status-detail">this page</div>
+        </div>
+      </div>
+    </div>
+
+    <h2>4 modules + 1 cockpit</h2>
+    <div class="modules">
+      <a class="mod disabled" href="#">
+        <div class="mod-head">
+          <span class="mod-icon">🎧</span>
+          <span class="mod-title">buds-sim</span>
+          <span class="mod-badge todo">Sprint 1</span>
+        </div>
+        <div class="mod-desc">
+          버즈 펌웨어 시뮬레이터. 마이크 = 외부음, 시스템 출력 = 내부 소리, 이중 링버퍼·Opus·VAD·패킷 서명까지.
+        </div>
+        <div class="mod-tech">Web Audio · opus-recorder · Ed25519</div>
+      </a>
+
+      <a class="mod disabled" href="#">
+        <div class="mod-head">
+          <span class="mod-icon">📱</span>
+          <span class="mod-title">galaxy-host</span>
+          <span class="mod-badge todo">Sprint 3</span>
+        </div>
+        <div class="mod-desc">
+          갤럭시 폰 브릿지. 서버 응답을 받아 화면에 액션카드로 표시, 사용자가 후속 행동 선택.
+        </div>
+        <div class="mod-tech">WebSocket · IndexedDB queue</div>
+      </a>
+
+      <a class="mod disabled" href="#">
+        <div class="mod-head">
+          <span class="mod-icon">💻</span>
+          <span class="mod-title">others-host</span>
+          <span class="mod-badge todo">Sprint 4</span>
+        </div>
+        <div class="mod-desc">
+          비-갤럭시 호스트. BNEP unwrap + 페이로드 passthrough — 본문은 못 보고 라우터 역할만.
+        </div>
+        <div class="mod-tech">BNEP unwrap visualization</div>
+      </a>
+
+      <a class="mod disabled" href="#">
+        <div class="mod-head">
+          <span class="mod-icon">🎬</span>
+          <span class="mod-title">demo-shell</span>
+          <span class="mod-badge todo">Sprint 5</span>
+        </div>
+        <div class="mod-desc">
+          4 모듈을 한 화면에 띄우고 실행 중인 코드 줄을 live highlight. 사전 정의 시나리오 3개.
+        </div>
+        <div class="mod-tech">4-panel grid · code-line highlight</div>
+      </a>
+    </div>
+
+    <h2>Stack</h2>
+    <div class="links">
+      <a href="https://github.com/hyenem/budsai-prototype" target="_blank" rel="noopener">source ↗</a>
+      <span>·</span>
+      <a href="https://budsai.up.railway.app/docs" target="_blank" rel="noopener">API docs (Swagger) ↗</a>
+      <span>·</span>
+      <a href="https://hyenem.github.io/appendix-final.html" target="_blank" rel="noopener">design appendix ↗</a>
+      <span>·</span>
+      <a href="https://github.com/hyenem/budsai-prototype/blob/main/README.md" target="_blank" rel="noopener">README ↗</a>
+    </div>
+
+    <footer>
+      Sprint 0 done · 2026-05-27 · server on Railway, static on GitHub Pages.
+    </footer>
+  </main>
+
+  <script>
+    // ---- live API health probe ----
+    (async () => {
+      const dot = document.getElementById('api-dot');
+      const detail = document.getElementById('api-detail');
+      try {
+        const t0 = performance.now();
+        const r = await fetch('https://budsai.up.railway.app/healthz', { mode: 'cors' });
+        const dt = Math.round(performance.now() - t0);
+        if (r.ok) {
+          const j = await r.json();
+          dot.classList.remove('wait'); dot.classList.add('ok');
+          detail.textContent = `${r.status} · v${j.version} · ${dt}ms`;
+        } else {
+          dot.classList.remove('wait'); dot.classList.add('err');
+          detail.textContent = `HTTP ${r.status}`;
+        }
+      } catch (e) {
+        dot.classList.remove('wait'); dot.classList.add('err');
+        detail.textContent = 'unreachable (CORS or offline)';
+      }
+    })();
+  </script>
+</body>
+</html>
