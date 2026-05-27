@@ -27,7 +27,16 @@ export class Mic {
   async start() {
     if (this.ctx) return;
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      // echoCancellation ON: in the simulator the laptop speakers play
+      // the synthetic "system" audio, and we don't want it bleeding back
+      // into the external mic / question tracks. Real buds have hard
+      // physical isolation; this is the browser-side stand-in.
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl:  true,
+        sampleRate: 48000,
+      },
       video: false,
     });
     this.stream = stream;

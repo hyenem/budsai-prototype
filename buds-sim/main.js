@@ -15,6 +15,7 @@ import { SystemAudio } from "./lib/system-audio.js";
 import { RingBuffer, attachRingViz } from "./lib/ring-buffer.js";
 import { registerDevice, postSession, streamSession, apiBase } from "./lib/api.js";
 import { CodeViewer } from "./lib/code-viewer.js";
+import { OpusRecorder, blobToB64u } from "./lib/opus-recorder.js";
 import { SNIPPETS } from "./snippets.js";
 
 // ----- constants -----
@@ -56,6 +57,7 @@ const els = {
   apiStat:  $("api-status"),
   sysSrc:   $("sys-source"),
   sysEl:    $("sys-audio"),
+  sysMute:  $("sys-mute"),
 };
 
 // ----- top-level error catch so failures land in the UI, not just console -----
@@ -78,6 +80,7 @@ const ringQ = new RingBuffer({ durationMs: QUESTION_MAX_MS, sampleRate: SR, name
 
 const mic = new Mic();
 const sys = new SystemAudio();
+let opusRec = null;     // OpusRecorder, lazily created after mic starts
 
 let kp = null;             // Ed25519 keypair (set during boot)
 let DEVICE_ID = "—";
@@ -193,6 +196,10 @@ sys.onSamples((int16) => { ringS.write(int16); });
 
 // ===== System audio: source picker. ALL action deferred to first user click. =====
 sys.attach(els.sysEl);
+if (els.sysMute) {
+  sys.muted = els.sysMute.checked;
+  els.sysMute.addEventListener("change", () => sys.setMuted(els.sysMute.checked));
+}
 els.sysSrc.addEventListener("change", () => {
   // Only act after the user has interacted (so AudioContext can resume).
   if (!mic.isRunning()) return;
@@ -227,6 +234,13 @@ els.btnMic.addEventListener("click", async () => {
   try {
     viewer.fire("mic", "getusermedia");
     await mic.start();
+    // Prepare Opus encoder against the same mic stream.
+    if (OpusRecorder.isSupported()) {
+      opusRec = new OpusRecorder(mic.stream);
+      appendFeed("opus", `MediaRecorder ready · ${opusRec.mime} @ ~16 kbps`, "is-pipe");
+    } else {
+      appendFeed("opus", "⚠ Opus not supported in this browser — falling back to raw PCM for question", "is-pipe");
+    }
     els.btnMic.innerHTML = "✓ 시뮬레이션 실행 중";
     els.btnMic.classList.remove("btn-start");
     els.btnMic.classList.add("is-running");
@@ -256,11 +270,15 @@ function startQuestion() {
   ringQ.reset();
   recording = true;
   questionStartTs = performance.now();
-  firstVoiceTs = 0;       // NO endpoint check until we've actually heard speech
+  firstVoiceTs = 0;
   lastVoiceTs = 0;
   els.btnTrig.textContent = "🔴 녹음 중 · 말씀하세요…";
   els.btnTrig.classList.add("is-recording");
   viewer.fire("trigger", "longpress");
+  // Start Opus encoder for the question track.
+  if (opusRec) {
+    try { opusRec.start(); } catch (e) { console.warn("opus start", e); opusRec = null; }
+  }
   appendFeed("triggered",
     "녹음 시작 — 말씀 후 약 0.9s 침묵 또는 최대 8s에서 자동 전송", "is-pipe");
 }
@@ -281,6 +299,20 @@ async function finishQuestion(reason) {
     const qBytes = ringQ.asBytes();
     const sessionId = `bs-${Date.now()}`;
 
+    // Stop the Opus recorder and pull its WebM blob.
+    let opusBlob = null;
+    if (opusRec) {
+      try {
+        opusBlob = await opusRec.stop();
+        appendFeed("opus",
+          `question encoded → ${opusRec.mime} · ${humanBytes(opusBlob.size)}` +
+          ` (PCM would be ${humanBytes(qBytes.length)} · ~${(qBytes.length / Math.max(1, opusBlob.size)).toFixed(1)}× smaller)`,
+          "is-pipe");
+      } catch (e) {
+        console.warn("opus stop failed", e);
+      }
+    }
+
     viewer.fire("packet", "build");
     const env = buildEnvelope({
       deviceId:      DEVICE_ID,
@@ -289,13 +321,17 @@ async function finishQuestion(reason) {
       systemBytes:   sBytes,  systemMs:   msFromFilled(ringS),
       externalBytes: eBytes,  externalMs: msFromFilled(ringE),
       questionBytes: qBytes,  questionMs: msFromFilled(ringQ),
+      questionOpus_b64:  opusBlob ? await blobToB64u(opusBlob) : undefined,
+      questionOpus_mime: opusBlob ? opusRec.mime : undefined,
     });
 
     viewer.fire("packet", "sign");
     const signed = await signEnvelope(env, kp);
+    const totalRaw = sBytes.length + eBytes.length + (opusBlob ? opusBlob.size : qBytes.length);
     appendFeed("signed",
-      `Ed25519 · payload ${humanBytes(sBytes.length + eBytes.length + qBytes.length)} ` +
-      `(S:${humanBytes(sBytes.length)} E:${humanBytes(eBytes.length)} Q:${humanBytes(qBytes.length)})`,
+      `Ed25519 · payload ${humanBytes(totalRaw)} ` +
+      `(S:${humanBytes(sBytes.length)} E:${humanBytes(eBytes.length)} ` +
+      `Q:${opusBlob ? humanBytes(opusBlob.size) + " opus" : humanBytes(qBytes.length) + " pcm"})`,
       "is-pipe");
 
     viewer.fire("api", "post");

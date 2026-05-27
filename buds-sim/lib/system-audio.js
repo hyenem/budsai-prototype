@@ -22,11 +22,13 @@ export class SystemAudio {
     this.ctx = null;
     this.elementSource = null;
     this.synthNodes = null;   // { osc, gain } when in synthetic mode
+    this.master = null;       // GainNode controlling speaker output (mute-able)
     this.analyser = null;
     this.processor = null;
     this.sampleListeners = [];
     this.levelListeners = [];
     this.audioEl = null;
+    this.muted = true;        // default muted to avoid mic loopback
     this.mode = "element";    // "element" | "synthetic-melody" | "synthetic-podcast"
   }
 
@@ -94,9 +96,20 @@ export class SystemAudio {
   }
 
   _ensureCtx() {
-    if (this.ctx) return;
+    if (this.ctx) {
+      // Resume in case browser left the context suspended after creation.
+      if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AC();
+    if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
+
+    // Master gain for muting speakers without breaking capture.
+    this.master = this.ctx.createGain();
+    this.master.gain.value = this.muted ? 0 : 0.6;
+    this.master.connect(this.ctx.destination);
+
     // Tap nodes are built once and reused across source switches.
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 512;
@@ -107,16 +120,28 @@ export class SystemAudio {
       const i16 = downsampleAndQuantize(input, this.ctx.sampleRate, TARGET_SAMPLE_RATE);
       for (const l of this.sampleListeners) l(i16);
     };
-    this.processor.connect(this.ctx.destination);
+    // ScriptProcessor's output must reach destination for the callback to
+    // run — give it a silent path via a zero-gain node so muting doesn't
+    // kill sample capture.
+    const silent = this.ctx.createGain();
+    silent.gain.value = 0;
+    this.processor.connect(silent);
+    silent.connect(this.ctx.destination);
+
     this._pumpLevel();
   }
 
-  /** Connect any source node into both the analyser tap and audible out. */
+  /** Connect any source node into the analyser tap AND the master output. */
   _wireTap(source) {
     try { source.disconnect(); } catch {}
     source.connect(this.analyser);
     source.connect(this.processor);
-    source.connect(this.ctx.destination);
+    source.connect(this.master);   // master.gain controls audibility
+  }
+
+  setMuted(muted) {
+    this.muted = muted;
+    if (this.master) this.master.gain.value = muted ? 0 : 0.6;
   }
 
   _pumpLevel() {

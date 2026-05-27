@@ -35,27 +35,45 @@ export async function signEnvelope(envelope, keypair) {
   return { ...envelope, sig };
 }
 
-// Helper for buds-sim — produces an envelope from raw track data
-// without yet doing Opus encoding (real codec lands later).
+// Helper for buds-sim — produces an envelope from raw track data.
 //
-// THREE independent tracks, all Int16 mono 16 kHz:
-//   system   — what the buds were PLAYING (music/podcast/call)
-//   external — what the ANC mic was hearing OUTSIDE the user
-//   question — what the user SAID after long-press
+// THREE independent tracks:
+//   system   — what the buds were PLAYING  (PCM16 raw for now)
+//   external — what the ANC mic was hearing (PCM16 raw for now)
+//   question — what the user SAID          (WebM/Opus when MediaRecorder
+//                                           supports it, otherwise PCM16)
+//
+// Each track carries its own `codec` field so the server knows whether
+// to WAV-wrap raw PCM or feed Opus straight to Whisper.
 export function buildEnvelope({
   deviceId,
   sessionId,
   trigger = "long_press",
   systemBytes,    systemMs,
   externalBytes,  externalMs,
+  // question is Opus-preferred; main.js may pass questionOpus_b64 +
+  // questionOpus_mime instead of questionBytes.
   questionBytes,  questionMs,
+  questionOpus_b64,
+  questionOpus_mime,
 }) {
-  const track = (bytes, ms) => ({
+  const pcmTrack = (bytes, ms) => ({
     codec: "pcm16",
     duration_ms: ms | 0,
     audio_b64: bytesToB64u(bytes),
     sha256: "placeholder",
   });
+
+  const opusTrack = (b64, mime, ms) => ({
+    codec: mime || "audio/webm;codecs=opus",
+    duration_ms: ms | 0,
+    audio_b64: b64,
+    sha256: "placeholder",
+  });
+
+  const question = questionOpus_b64
+    ? opusTrack(questionOpus_b64, questionOpus_mime, questionMs)
+    : pcmTrack(questionBytes, questionMs);
 
   return {
     v: 1,
@@ -64,9 +82,9 @@ export function buildEnvelope({
     ts: Date.now(),
     trigger,
     tracks: {
-      system:   track(systemBytes,   systemMs),
-      external: track(externalBytes, externalMs),
-      question: track(questionBytes, questionMs),
+      system:   pcmTrack(systemBytes,   systemMs),
+      external: pcmTrack(externalBytes, externalMs),
+      question,
     },
   };
 }
