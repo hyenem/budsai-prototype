@@ -13,7 +13,7 @@ from .routes import devices as devices_routes
 from .routes import sessions as sessions_routes
 from .routes import stream as stream_routes
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 settings = get_settings()
 
@@ -23,11 +23,15 @@ app = FastAPI(
     description="Routes signed packets from buds-sim → LLM → response.",
 )
 
+# Demo/prototype CORS: accept any origin so the GitHub Pages bundle works.
+# Real security lives in the device signature scheme — every meaningful
+# endpoint requires a valid Ed25519 signature, so opening CORS doesn't
+# expose anything an attacker couldn't already hit with curl.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_origin_regex=r".*",
+    allow_credentials=False,   # required when origin matches via regex/wildcard
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
