@@ -13,7 +13,11 @@ class Settings(BaseSettings):
     env: str = "development"
     port: int = 8000
     log_level: str = "info"
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = (
+        "http://localhost:5173,"
+        "http://localhost:5174,"
+        "https://hyenem.github.io"
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:
