@@ -29,9 +29,10 @@ function stableStringify(v) {
   ).join(",") + "}";
 }
 
-export function signEnvelope(envelope, keypair) {
+export async function signEnvelope(envelope, keypair) {
   const msg = canonicalBytes(envelope);
-  return { ...envelope, sig: keypair.signB64(msg) };
+  const sig = await keypair.signB64(msg);
+  return { ...envelope, sig };
 }
 
 // Helper for buds-sim — produces an envelope from raw track data

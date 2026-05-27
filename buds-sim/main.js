@@ -1,9 +1,12 @@
 // buds-sim · entry point
 //
 // Three input tracks captured in parallel:
-//   S = system playback (page <audio>)            → ring S, 30 s rolling
-//   E = external ANC mic                          → ring E, 30 s rolling
+//   S = system playback (page <audio> or synth)  → ring S, 30 s rolling
+//   E = external mic                              → ring E, 30 s rolling
 //   Q = user question (mic, latched on trigger)   → ring Q, 5 s, VAD-bounded
+//
+// All AudioContext + capture starts on the user's first click of
+// "마이크 시작" — browsers block autoplay before any user gesture.
 
 import { loadOrCreateKeypair } from "../shared/ts/key.js";
 import { buildEnvelope, signEnvelope } from "../shared/ts/packet.js";
@@ -20,27 +23,6 @@ const LOOKBACK_MS = 30_000;
 const QUESTION_MAX_MS = 5_000;
 const VAD_HANGOVER_MS = 500;
 const VAD_RMS_THRESHOLD = 0.012;
-
-// ----- identity -----
-const kp = loadOrCreateKeypair();
-const DEVICE_ID = "buds-sim-" + kp.publicB64.slice(0, 8);
-
-// ----- buffers -----
-const ringS = new RingBuffer({ durationMs: LOOKBACK_MS, sampleRate: SR, name: "S" });
-const ringE = new RingBuffer({ durationMs: LOOKBACK_MS, sampleRate: SR, name: "E" });
-const ringQ = new RingBuffer({ durationMs: QUESTION_MAX_MS, sampleRate: SR, name: "Q" });
-
-// ----- audio sources -----
-const mic = new Mic();
-const sys = new SystemAudio();
-
-// ----- state -----
-let recording = false;
-let lastVoiceTs = 0;
-let questionStartTs = 0;
-
-// ----- code viewer -----
-const viewer = new CodeViewer(document.getElementById("code-viewer"), SNIPPETS);
 
 // ----- DOM -----
 const $ = (id) => document.getElementById(id);
@@ -75,11 +57,35 @@ const els = {
   sysEl:    $("sys-audio"),
 };
 
-// ----- identity display -----
-els.devId.textContent  = DEVICE_ID;
-els.devPub.textContent = kp.publicB64.slice(0, 28) + "…";
+// ----- top-level error catch so failures land in the UI, not just console -----
+window.addEventListener("error", (e) => fatal("script error", e.message));
+window.addEventListener("unhandledrejection", (e) =>
+  fatal("async error", e.reason?.message || String(e.reason))
+);
 
-// ----- ring viz -----
+function fatal(label, msg) {
+  appendFeed(label, msg, "is-pipe");
+  els.devReg.textContent = "✗ " + msg;
+  els.devReg.classList.remove("pending");
+  console.error("[buds-sim]", label, msg);
+}
+
+// ===== STATE =====
+const ringS = new RingBuffer({ durationMs: LOOKBACK_MS, sampleRate: SR, name: "S" });
+const ringE = new RingBuffer({ durationMs: LOOKBACK_MS, sampleRate: SR, name: "E" });
+const ringQ = new RingBuffer({ durationMs: QUESTION_MAX_MS, sampleRate: SR, name: "Q" });
+
+const mic = new Mic();
+const sys = new SystemAudio();
+
+let kp = null;             // Ed25519 keypair (set during boot)
+let DEVICE_ID = "—";
+let recording = false;
+let lastVoiceTs = 0;
+let questionStartTs = 0;
+let bootOk = false;
+
+// ===== ring viz attached immediately (no audio yet, just empty bars) =====
 attachRingViz(els.ringS, ringS, "#c084fc");
 attachRingViz(els.ringA, ringE, "#5eead4");
 attachRingViz(els.ringB, ringQ, "#f472b6");
@@ -99,8 +105,22 @@ ringQ.onUpdate(() => {
     : `recording · ${(ringQ.filled / SR).toFixed(2)}s`;
 });
 
-// ----- API probe + device registration -----
+// ===== CODE VIEWER =====
+const viewer = new CodeViewer(document.getElementById("code-viewer"), SNIPPETS);
+
+// ===== BOOT: identity + API probe + device register =====
 (async () => {
+  try {
+    // 1. Ed25519 keypair (async in v1)
+    kp = await loadOrCreateKeypair();
+    DEVICE_ID = "buds-sim-" + kp.publicB64.slice(0, 8);
+    els.devId.textContent = DEVICE_ID;
+    els.devPub.textContent = kp.publicB64.slice(0, 28) + "…";
+  } catch (e) {
+    fatal("keypair", e.message);
+    return;
+  }
+
   try {
     const r = await fetch(apiBase() + "/healthz");
     const j = await r.json();
@@ -112,18 +132,20 @@ ringQ.onUpdate(() => {
     els.devSrv.classList.remove("pending");
     els.apiStat.textContent = "API: unreachable";
   }
+
   try {
     viewer.fire("device", "register");
     await registerDevice(DEVICE_ID, kp.publicB64);
     els.devReg.textContent = "✓ registered";
     els.devReg.classList.replace("pending", "ok");
+    bootOk = true;
+    appendFeed("ready", "👇 마이크 시작 버튼을 눌러 캡처를 시작하세요.", "is-pipe");
   } catch (e) {
-    els.devReg.textContent = "✗ " + e.message;
-    els.devReg.classList.remove("pending");
+    fatal("register", e.message);
   }
 })();
 
-// ----- mic fan-out → ring E (always) + ring Q (only while recording) -----
+// ===== AUDIO LISTENERS (wired once; fire only when mic / sys is running) =====
 mic.onLevel((rms) => {
   const pct = Math.min(100, rms * 600);
   els.micBar.style.height = pct + "%";
@@ -146,56 +168,47 @@ mic.onLevel((rms) => {
 
 mic.onSamples((int16) => {
   ringE.write(int16);
-  viewer.fire("ringbuffer", "writeE");
   if (recording) ringQ.write(int16);
 });
 
-// ----- system audio fan-out → ring S -----
 sys.onLevel((rms) => {
   els.sysBar.style.height = Math.min(100, rms * 600) + "%";
   els.sysNum.textContent = rms.toFixed(3);
 });
-sys.onSamples((int16) => {
-  ringS.write(int16);
-  viewer.fire("ringbuffer", "writeS");
+sys.onSamples((int16) => { ringS.write(int16); });
+
+// ===== System audio: source picker. ALL action deferred to first user click. =====
+sys.attach(els.sysEl);
+els.sysSrc.addEventListener("change", () => {
+  // Only act after the user has interacted (so AudioContext can resume).
+  if (!mic.isRunning()) return;
+  applySysSource();
 });
-
-// ----- system audio: pick source -----
-sys.attach(els.sysEl);   // lazy element graph (only used in mp3 mode)
-
-els.sysSrc.addEventListener("change", async () => {
+function applySysSource() {
   const src = els.sysSrc.value;
-
   if (src === "silence") {
     sys.stopSynthetic();
-    els.sysEl.pause();
+    try { els.sysEl.pause(); } catch {}
     els.sysEl.src = "";
     els.sysEl.style.display = "none";
     return;
   }
-
   if (src.startsWith("synthetic-")) {
-    els.sysEl.pause();
+    try { els.sysEl.pause(); } catch {}
     els.sysEl.src = "";
     els.sysEl.style.display = "none";
-    try {
-      sys.startSynthetic(src);
-    } catch (e) {
-      console.error("synth start failed", e);
-      alert("브라우저가 합성 톤을 생성하지 못했습니다: " + e.message);
-    }
+    sys.startSynthetic(src);
     return;
   }
-
-  // mp3 path (user-supplied file in /audio/)
   sys.stopSynthetic();
   els.sysEl.src = "./" + src;
   els.sysEl.style.display = "inline-block";
-});
-els.sysSrc.dispatchEvent(new Event("change"));
+  els.sysEl.play().catch(() => {});
+}
 
-// ----- buttons -----
+// ===== Buttons =====
 els.btnMic.addEventListener("click", async () => {
+  if (!bootOk) { alert("아직 준비 중입니다 — 디바이스 등록을 기다려주세요."); return; }
   if (mic.isRunning()) return;
   try {
     viewer.fire("mic", "getusermedia");
@@ -203,13 +216,16 @@ els.btnMic.addEventListener("click", async () => {
     els.btnMic.textContent = "🎤 마이크 ON";
     els.btnMic.disabled = true;
     els.btnTrig.disabled = false;
+    appendFeed("mic-on", "외부 마이크 활성 · Ring E 채워지는 중", "is-pipe");
+    // Now that we have a user gesture, start the chosen system source too.
+    applySysSource();
   } catch (e) {
-    alert("마이크 권한이 거부되었습니다: " + e.message);
+    fatal("mic", "마이크 권한 거부 또는 실패: " + e.message);
   }
 });
 
 els.btnClear.addEventListener("click", () => {
-  els.feed.innerHTML = '<div class="empty">트리거를 눌러 첫 세션을 시작하세요.</div>';
+  els.feed.innerHTML = '<div class="empty">트리거를 눌러 새 세션을 시작하세요.</div>';
   els.answer.classList.remove("is-shown");
   els.ansAudio.style.display = "none";
   els.ansAudio.src = "";
@@ -217,10 +233,10 @@ els.btnClear.addEventListener("click", () => {
 
 els.btnTrig.addEventListener("click", () => startQuestion());
 
-// ----- trigger -----
+// ===== Trigger =====
 function startQuestion() {
   if (recording) return;
-  if (!mic.isRunning()) { alert("먼저 마이크를 시작하세요."); return; }
+  if (!mic.isRunning()) { alert("먼저 🎤 마이크 시작 버튼을 눌러주세요."); return; }
   ringQ.reset();
   recording = true;
   questionStartTs = performance.now();
@@ -241,31 +257,30 @@ async function finishQuestion(reason) {
     `Q close · ${reason === "vad" ? "500ms 침묵 감지" : "5s 한계 도달"} · ${(ringQ.filled / SR).toFixed(2)}s`,
     "is-pipe");
 
-  // ---- assemble + sign + post + stream ----
-  viewer.fire("packet", "snapshot");
-  const sBytes = ringS.asBytes();
-  const eBytes = ringE.asBytes();
-  const qBytes = ringQ.asBytes();
-  const sessionId = `bs-${Date.now()}`;
-
-  viewer.fire("packet", "build");
-  const env = buildEnvelope({
-    deviceId:      DEVICE_ID,
-    sessionId,
-    trigger:       "long_press",
-    systemBytes:   sBytes,  systemMs:   msFromFilled(ringS),
-    externalBytes: eBytes,  externalMs: msFromFilled(ringE),
-    questionBytes: qBytes,  questionMs: msFromFilled(ringQ),
-  });
-
-  viewer.fire("packet", "sign");
-  const signed = signEnvelope(env, kp);
-  appendFeed("signed",
-    `Ed25519 · payload ${humanBytes(sBytes.length + eBytes.length + qBytes.length)} ` +
-    `(S:${humanBytes(sBytes.length)} E:${humanBytes(eBytes.length)} Q:${humanBytes(qBytes.length)})`,
-    "is-pipe");
-
   try {
+    viewer.fire("packet", "snapshot");
+    const sBytes = ringS.asBytes();
+    const eBytes = ringE.asBytes();
+    const qBytes = ringQ.asBytes();
+    const sessionId = `bs-${Date.now()}`;
+
+    viewer.fire("packet", "build");
+    const env = buildEnvelope({
+      deviceId:      DEVICE_ID,
+      sessionId,
+      trigger:       "long_press",
+      systemBytes:   sBytes,  systemMs:   msFromFilled(ringS),
+      externalBytes: eBytes,  externalMs: msFromFilled(ringE),
+      questionBytes: qBytes,  questionMs: msFromFilled(ringQ),
+    });
+
+    viewer.fire("packet", "sign");
+    const signed = await signEnvelope(env, kp);
+    appendFeed("signed",
+      `Ed25519 · payload ${humanBytes(sBytes.length + eBytes.length + qBytes.length)} ` +
+      `(S:${humanBytes(sBytes.length)} E:${humanBytes(eBytes.length)} Q:${humanBytes(qBytes.length)})`,
+      "is-pipe");
+
     viewer.fire("api", "post");
     const resp = await postSession(DEVICE_ID, signed);
     appendFeed("posted", `session_id = ${resp.session_id}`, "is-pipe");
@@ -277,18 +292,15 @@ async function finishQuestion(reason) {
       onError: (e)     => appendFeed("error", e.message, "is-pipe"),
     });
   } catch (e) {
-    appendFeed("error", e.message);
+    fatal("trigger", e.message);
   }
 }
 
-function msFromFilled(ring) {
-  return Math.floor(ring.filled / SR * 1000);
-}
+function msFromFilled(ring) { return Math.floor(ring.filled / SR * 1000); }
 
 function onServerStage(stage) {
   viewer.fire("server", stage.stage || "");
-  const friendly = formatStage(stage);
-  appendFeed(stage.stage, friendly);
+  appendFeed(stage.stage, formatStage(stage));
   if (stage.stage === "llm_answer") showAnswer(stage);
   if (stage.stage === "tts" && stage.audio_b64) playTTS(stage);
 }
@@ -302,7 +314,7 @@ function formatStage(s) {
              `E="${(s.external_text || "").slice(0, 28)}…" · ` +
              `Q="${(s.question_text || "").slice(0, 36)}…"`;
     case "intent":
-      return `system=${s.system_kind} · external=${s.external_kind}`;
+      return `system=${s.system_kind || "?"} · external=${s.external_kind || "?"}`;
     case "fingerprint":
       return s.match
         ? `match → ${s.song.artist} — ${s.song.title} (${s.song.year})`
@@ -312,7 +324,7 @@ function formatStage(s) {
     case "tts":
       return `TTS · voice=${s.voice} · ${s.audio_b64 ? humanBytes(Math.floor(s.audio_b64.length * 3 / 4)) : "mock"}`;
     case "complete":
-      return `pipeline complete · ${s.elapsed_ms}ms`;
+      return `pipeline complete · ${s.elapsed_ms || "?"}ms`;
     case "error":
       return `⚠ ${s.message}`;
     default:
@@ -322,7 +334,7 @@ function formatStage(s) {
 
 function showAnswer(stage) {
   els.ansText.textContent = stage.answer;
-  els.ansSong.textContent = `[${stage.track_used}] · ${stage.intent} · ${(stage.confidence * 100).toFixed(0)}% 신뢰도`;
+  els.ansSong.textContent = `[${stage.track_used}] · ${stage.intent} · ${((stage.confidence || 0) * 100).toFixed(0)}% 신뢰도`;
   els.ansFollow.innerHTML = "";
   for (const fu of stage.follow_ups || []) {
     const b = document.createElement("button");
@@ -334,22 +346,20 @@ function showAnswer(stage) {
 }
 
 function playTTS(stage) {
-  // base64 → Blob → object URL → audio element
   try {
     const bin = atob(stage.audio_b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     const blob = new Blob([bytes], { type: stage.audio_mime || "audio/mpeg" });
-    const url = URL.createObjectURL(blob);
-    els.ansAudio.src = url;
+    els.ansAudio.src = URL.createObjectURL(blob);
     els.ansAudio.style.display = "block";
-    els.ansAudio.play().catch(() => { /* user must click */ });
+    els.ansAudio.play().catch(() => {});
   } catch (e) {
     console.error("TTS decode failed", e);
   }
 }
 
-// ----- helpers -----
+// ===== helpers =====
 function appendFeed(stage, text, extraClass = "") {
   const empty = els.feed.querySelector(".empty");
   if (empty) empty.remove();

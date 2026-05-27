@@ -30,6 +30,7 @@ export class Mic {
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       video: false,
     });
+    this.stream = stream;
     const AC = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AC();
     this.source = this.ctx.createMediaStreamSource(stream);

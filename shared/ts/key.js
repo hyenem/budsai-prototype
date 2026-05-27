@@ -7,13 +7,12 @@
 //
 // Uses @noble/ed25519 from esm.sh so this file works without any
 // build step — just import it from a <script type="module">.
+//
+// We pin v1.7.3 specifically because it bundles its own sha512;
+// v2.x splits that into a separate package and the extra round-trip
+// to esm.sh has hung intermittently in production.
 
-import * as ed from "https://esm.sh/@noble/ed25519@2.1.0";
-import { sha512 } from "https://esm.sh/@noble/hashes@1.4.0/sha512";
-
-// noble/ed25519 v2+ requires the host to supply sha512 (browsers don't
-// expose it via WebCrypto for arbitrary input).
-ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
+import * as ed from "https://esm.sh/@noble/ed25519@1.7.3";
 
 // ---------- base64url ----------
 export function b64uEncode(bytes) {
@@ -39,24 +38,24 @@ export class Ed25519KeyPair {
   get privateB64() { return b64uEncode(this.privateRaw); }
   get publicB64()  { return b64uEncode(this.publicRaw); }
 
-  sign(messageBytes) {
-    return ed.sign(messageBytes, this.privateRaw);  // returns Uint8Array(64)
+  async sign(messageBytes) {
+    return await ed.sign(messageBytes, this.privateRaw);  // Uint8Array(64)
   }
-  signB64(messageBytes) {
-    return b64uEncode(this.sign(messageBytes));
+  async signB64(messageBytes) {
+    return b64uEncode(await this.sign(messageBytes));
   }
 }
 
-export function generateKeypair() {
-  const privateRaw = ed.utils.randomPrivateKey();   // 32 bytes
-  const publicRaw  = ed.getPublicKey(privateRaw);    // 32 bytes
+export async function generateKeypair() {
+  const privateRaw = ed.utils.randomPrivateKey();         // 32 bytes
+  const publicRaw  = await ed.getPublicKey(privateRaw);    // 32 bytes
   return new Ed25519KeyPair(privateRaw, publicRaw);
 }
 
 // Persist + reload across page refreshes
 const LS_KEY = "budsai.devkey.v1";
 
-export function loadOrCreateKeypair() {
+export async function loadOrCreateKeypair() {
   const stored = localStorage.getItem(LS_KEY);
   if (stored) {
     try {
@@ -64,7 +63,7 @@ export function loadOrCreateKeypair() {
       return new Ed25519KeyPair(b64uDecode(priv), b64uDecode(pub));
     } catch { /* fall through */ }
   }
-  const kp = generateKeypair();
+  const kp = await generateKeypair();
   localStorage.setItem(LS_KEY, JSON.stringify({
     priv: kp.privateB64,
     pub:  kp.publicB64,
@@ -72,8 +71,8 @@ export function loadOrCreateKeypair() {
   return kp;
 }
 
-export function verify(publicB64, messageBytes, signatureB64) {
+export async function verify(publicB64, messageBytes, signatureB64) {
   try {
-    return ed.verify(b64uDecode(signatureB64), messageBytes, b64uDecode(publicB64));
+    return await ed.verify(b64uDecode(signatureB64), messageBytes, b64uDecode(publicB64));
   } catch { return false; }
 }
