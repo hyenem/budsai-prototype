@@ -35,18 +35,25 @@ logger = logging.getLogger("budsai.pipeline")
 # ----- prompt -----
 _SYSTEM_PROMPT = """\
 You are a quick assistant living inside Galaxy Buds. The user just
-triggered you. You receive three short audio transcripts:
+triggered you. You receive both the QUESTION transcript and the
+ACTUAL AUDIO of what they were listening to.
 
-  • SYSTEM   = what the buds were PLAYING into the user's ear
-               (music lyrics, podcast, call audio, or empty)
-  • EXTERNAL = what the world OUTSIDE the user sounded like
-               (ANC mic capture — speech around them, announcements)
-  • QUESTION = what the USER themselves just said
+Two audio attachments may be present:
+  • SYSTEM  audio = what the buds were PLAYING into the user's ear
+                    (music, podcast, call audio). Use your audio
+                    understanding to identify songs, genres, lyrics,
+                    speakers, or sounds.
+  • EXTERNAL audio = what the world OUTSIDE the user sounded like
+                     (ANC mic capture). Useful for "what did the
+                     announcement say?" or "what's that noise?".
 
-Use whichever of the three are relevant. Examples:
-  - "방금 그 노래 뭐였어?"           → infer the song from SYSTEM
-  - "옆에서 뭐라고 했어?"             → quote/summarize from EXTERNAL
-  - "내일 오전 9시 회의 일정 추가"   → only QUESTION matters
+Plus a text transcript:
+  • QUESTION  = what the USER themselves just said.
+
+Use whichever of the inputs are relevant. Examples:
+  - "방금 그 노래 뭐였어?"            → identify from SYSTEM audio
+  - "옆에서 뭐라고 했어?"              → summarize EXTERNAL audio
+  - "내일 오전 9시 회의 일정 추가"     → only QUESTION matters
 
 Return STRICT JSON (no prose, no code fences):
 
@@ -60,7 +67,10 @@ Return STRICT JSON (no prose, no code fences):
   ]
 }
 
-Keep `answer` under 220 characters (it will be spoken via TTS).
+If the SYSTEM audio is clearly synthetic / not a real song, say so
+honestly in `answer` rather than guessing. Keep `answer` under 220
+characters (it will be spoken via TTS).
+
 Good intent values: identify_audio, summarize_overheard, add_calendar,
 web_search, play_music, ask_followup, smalltalk.
 """
@@ -103,45 +113,52 @@ async def _run_real(session_id: str, body: dict[str, Any], settings) -> None:
     store.append_event(session_id, {
         "stage": "decoded",
         "ts": int(time.time() * 1000),
-        "note": "PCM16 16kHz mono · 3 tracks",
+        "note": "PCM16 / WebM-Opus · 3 tracks",
         "system_ms":   system_t.get("duration_ms", 0),
         "external_ms": external_t.get("duration_ms", 0),
         "question_ms": question_t.get("duration_ms", 0),
+        "system_codec":   system_t.get("codec"),
+        "external_codec": external_t.get("codec"),
+        "question_codec": question_t.get("codec"),
     })
 
-    # ---- 2. stt (parallel Whisper calls per non-empty track) ----
-    stt = await _transcribe_tracks(client, system_t, external_t, question_t,
-                                    settings.openai_stt_model)
+    # ---- 2. stt — QUESTION TRACK ONLY ----
+    # System and external get sent to GPT-4o-audio in step 5; transcribing
+    # music with Whisper just extracts lyrics, which the text LLM can't
+    # use to actually identify a song. The user's question, on the other
+    # hand, is exactly what Whisper is built for.
+    q_text = await _transcribe_question(client, question_t, settings.openai_stt_model)
     store.append_event(session_id, {
         "stage": "stt",
         "ts": int(time.time() * 1000),
         "model": settings.openai_stt_model,
-        **stt,   # system_text / external_text / question_text
+        "scope": "question only — system+external go to audio LLM next",
+        "question_text": q_text or "(no speech detected)",
     })
 
     # ---- 3. intent (cheap pre-classifier; LLM refines later) ----
     store.append_event(session_id, {
         "stage": "intent",
         "ts": int(time.time() * 1000),
-        "note": "ambient pre-classifier; LLM picks final intent + track_used next",
-        "system_kind":   _classify_track(system_t,   stt["system_text"]),
-        "external_kind": _classify_track(external_t, stt["external_text"]),
+        "note": "ambient pre-classifier; audio LLM picks intent + track_used next",
+        "system_kind":   _classify_track(system_t,   ""),
+        "external_kind": _classify_track(external_t, ""),
     })
 
-    # ---- 4. fingerprint (placeholder; Shazam-style in Sprint 4) ----
+    # ---- 4. fingerprint placeholder ----
     store.append_event(session_id, {
         "stage": "fingerprint",
         "ts": int(time.time() * 1000),
         "match": False,
-        "note": "audio fingerprinting deferred to Sprint 4",
+        "note": "GPT-4o-audio does song-recognition-like reasoning in next stage",
     })
 
-    # ---- 5. llm_answer ----
-    llm = await _llm_reply(client, stt, settings.openai_llm_model)
+    # ---- 5. llm_answer (audio LLM if available, falls back to text) ----
+    llm = await _llm_reply_audio(client, q_text, system_t, external_t, settings)
     store.append_event(session_id, {
         "stage": "llm_answer",
         "ts": int(time.time() * 1000),
-        "model": settings.openai_llm_model,
+        "model": llm.pop("_model", settings.openai_llm_model),
         **llm,
     })
 
@@ -176,6 +193,115 @@ async def _whisper(client: AsyncOpenAI, fname: str, audio_bytes: bytes, model: s
     file_arg = (fname, audio_bytes, mime)
     r = await client.audio.transcriptions.create(model=model, file=file_arg)
     return (r.text or "").strip()
+
+
+async def _transcribe_question(
+    client: AsyncOpenAI,
+    question_t: dict[str, Any],
+    model: str,
+) -> str:
+    pair = track_to_whisper_file(question_t)
+    if not pair or len(pair[1]) < 800:
+        return ""
+    fname, audio_bytes = pair
+    stem, _, ext = fname.rpartition(".")
+    named = f"question.{ext}" if ext else "question.bin"
+    try:
+        return await _whisper(client, named, audio_bytes, model)
+    except Exception as exc:
+        logger.warning("whisper(question) failed: %s", exc)
+        return ""
+
+
+def _track_to_audio_part(track: dict[str, Any], label: str) -> dict[str, Any] | None:
+    """Build an `input_audio` chat message part if the track has content."""
+    pair = track_to_whisper_file(track)
+    if not pair or len(pair[1]) < 800:
+        return None
+    fname, audio_bytes = pair
+    fmt = "wav" if fname.endswith(".wav") else (
+        "webm" if fname.endswith(".webm") else (
+            "ogg" if fname.endswith(".ogg") else "wav"
+        )
+    )
+    # The GPT-4o-audio API accepts a small subset of formats. WAV is the
+    # safest; the rest may be rejected depending on model version.
+    if fmt not in ("wav", "mp3"):
+        # Re-wrap raw audio in WAV via track_to_wav only if it was PCM.
+        # For webm/opus we currently send the webm and let the API try.
+        pass
+    return {
+        "type": "input_audio",
+        "input_audio": {
+            "data": base64.b64encode(audio_bytes).decode("ascii"),
+            "format": fmt if fmt in ("wav", "mp3") else "wav",
+        },
+    }
+
+
+async def _llm_reply_audio(
+    client: AsyncOpenAI,
+    question_text: str,
+    system_t: dict[str, Any],
+    external_t: dict[str, Any],
+    settings,
+) -> dict[str, Any]:
+    """Audio-modality LLM call. Falls back to text-only on errors."""
+    audio_model = getattr(settings, "openai_audio_llm_model", "") or ""
+    user_parts: list[dict[str, Any]] = [
+        {"type": "text", "text": (
+            f"QUESTION (user's speech): {question_text or '(silence)'}\n"
+            "If SYSTEM and/or EXTERNAL audio attachments are present below, "
+            "analyze them to answer. Return only the JSON contract."
+        )},
+    ]
+    # Only PCM tracks are safe to attach right now — webm/opus question
+    # is for Whisper, not the audio LLM. System/external are PCM so they
+    # become WAV via track_to_whisper_file.
+    sys_part = _track_to_audio_part(system_t, "SYSTEM")
+    if sys_part:
+        user_parts.append({"type": "text", "text": "--- SYSTEM (what the buds were playing) ---"})
+        user_parts.append(sys_part)
+    ext_part = _track_to_audio_part(external_t, "EXTERNAL")
+    if ext_part:
+        user_parts.append({"type": "text", "text": "--- EXTERNAL (ANC mic) ---"})
+        user_parts.append(ext_part)
+
+    has_audio = sys_part is not None or ext_part is not None
+
+    if has_audio and audio_model:
+        try:
+            r = await client.chat.completions.create(
+                model=audio_model,
+                modalities=["text"],
+                temperature=0.4,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_parts},
+                ],
+            )
+            raw = r.choices[0].message.content or "{}"
+            data = json.loads(raw) if raw.strip().startswith("{") else \
+                   {"answer": raw[:200]}
+            data.setdefault("intent", "smalltalk")
+            data.setdefault("confidence", 0.5)
+            data.setdefault("answer", "")
+            data.setdefault("track_used", "combined" if sys_part and ext_part else
+                                          ("system" if sys_part else "external"))
+            data.setdefault("follow_ups", [])
+            data["_model"] = audio_model
+            return data
+        except Exception as exc:
+            logger.warning("audio LLM (%s) failed, falling back to text: %s",
+                           audio_model, exc)
+
+    # Text-only fallback — pass just the question transcript.
+    return await _llm_reply(client, {
+        "system_text":   "(audio attached but not processed; falling back to text-only)",
+        "external_text": "",
+        "question_text": question_text,
+    }, settings.openai_llm_model)
 
 
 async def _transcribe_tracks(
@@ -244,6 +370,7 @@ async def _llm_reply(
     data.setdefault("answer", "")
     data.setdefault("track_used", "question")
     data.setdefault("follow_ups", [])
+    data["_model"] = model
     return data
 
 

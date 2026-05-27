@@ -33,6 +33,7 @@ const els = {
   devPub:   $("dev-pub"),
   devReg:   $("dev-reg"),
   devSrv:   $("dev-server"),
+  devCodec: $("dev-codec"),
   micBar:   $("mic-bar"),
   micNum:   $("mic-num"),
   qBar:     $("q-bar"),
@@ -244,8 +245,15 @@ els.btnMic.addEventListener("click", async () => {
     // Prepare Opus encoder against the same mic stream.
     if (OpusRecorder.isSupported()) {
       opusRec = new OpusRecorder(mic.stream);
+      if (els.devCodec) {
+        els.devCodec.textContent = opusRec.mime + "  ✓";
+        els.devCodec.classList.replace("pending", "ok");
+      }
       appendFeed("opus", `MediaRecorder ready · ${opusRec.mime} @ ~16 kbps`, "is-pipe");
     } else {
+      if (els.devCodec) {
+        els.devCodec.textContent = "pcm16 (Opus not supported in this browser)";
+      }
       appendFeed("opus", "⚠ Opus not supported in this browser — falling back to raw PCM for question", "is-pipe");
     }
     els.btnMic.innerHTML = "✓ 시뮬레이션 실행 중";

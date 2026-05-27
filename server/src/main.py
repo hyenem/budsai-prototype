@@ -13,7 +13,7 @@ from .routes import devices as devices_routes
 from .routes import sessions as sessions_routes
 from .routes import stream as stream_routes
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 
 settings = get_settings()
 

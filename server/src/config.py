@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_stt_model: str = "whisper-1"
     openai_llm_model: str = "gpt-4o-mini"
+    # Audio-in LLM used to ANALYZE the system/external tracks (not transcribe).
+    # Falls back to text-only LLM if blank.
+    openai_audio_llm_model: str = "gpt-4o-audio-preview"
     openai_tts_model: str = "tts-1"
     openai_tts_voice: str = "alloy"
 
